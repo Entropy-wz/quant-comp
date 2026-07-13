@@ -1,0 +1,16 @@
+holdout_fraction: 0.2
+# For first successful end-to-end run on limited RAM, use only the last N train partitions.
+# Set to null to use all partitions after smoke success.
+max_train_partitions: 2
+num_boost_round: 300
+early_stopping_rounds: 40
+params:
+  objective: regression
+  metric: l2
+  learning_rate: 0.05
+  num_leaves: 64
+  min_data_in_leaf: 100
+  feature_fraction: 0.8
+  bagging_fraction: 0.8
+  bagging_freq: 1
+  verbosity: -1
