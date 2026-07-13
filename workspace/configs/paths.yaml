@@ -1,0 +1,8 @@
+# Paths are resolved relative to the quant repo root unless absolute.
+data_root: public_release_20260630/home/jovyan/shared/public_release_20260630/data
+release_root: public_release_20260630/home/jovyan/shared/public_release_20260630
+workspace_root: workspace
+artifacts_dir: workspace/artifacts
+experiments_dir: workspace/experiments
+submission_strategy_dir: workspace/submission/strategy_v0
+num_threads: 4
