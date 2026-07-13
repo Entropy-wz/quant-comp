@@ -1,0 +1,69 @@
+{
+  "partitions": [
+    "train_partition_007.parquet",
+    "train_partition_008.parquet"
+  ],
+  "rows": 2785160,
+  "ranked": [
+    {
+      "responder": "responder_03",
+      "weighted_corr": 0.8127944389612178
+    },
+    {
+      "responder": "responder_28",
+      "weighted_corr": 0.6932068793664093
+    },
+    {
+      "responder": "responder_02",
+      "weighted_corr": 0.5644334663337716
+    },
+    {
+      "responder": "responder_29",
+      "weighted_corr": 0.5561585888180933
+    },
+    {
+      "responder": "responder_04",
+      "weighted_corr": 0.39363459589591715
+    },
+    {
+      "responder": "responder_30",
+      "weighted_corr": 0.3898012317622678
+    },
+    {
+      "responder": "responder_18",
+      "weighted_corr": 0.3886550785726582
+    },
+    {
+      "responder": "responder_19",
+      "weighted_corr": 0.3545496076011538
+    },
+    {
+      "responder": "responder_01",
+      "weighted_corr": 0.35322281611806416
+    },
+    {
+      "responder": "responder_17",
+      "weighted_corr": 0.3334715095341779
+    },
+    {
+      "responder": "responder_11",
+      "weighted_corr": 0.30975562387815153
+    },
+    {
+      "responder": "responder_10",
+      "weighted_corr": 0.3032296877660826
+    },
+    {
+      "responder": "responder_20",
+      "weighted_corr": 0.28339921034859583
+    },
+    {
+      "responder": "responder_12",
+      "weighted_corr": 0.26401294555548727
+    },
+    {
+      "responder": "responder_05",
+      "weighted_corr": 0.21680949540134944
+    }
+  ]
+}

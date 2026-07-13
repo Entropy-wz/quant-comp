@@ -112,6 +112,45 @@ def main() -> None:
 
     out_dir = paths["artifacts_dir"] / "lgb_v1"
     out_dir.mkdir(parents=True, exist_ok=True)
+
+    blend_info: dict | None = None
+    if cfg.get("auxiliary_mode", "none") == "blend":
+        from contest.responders import choose_blend_weight, rank_responders_by_target_corr
+
+        ranked = rank_responders_by_target_corr(pre, top_k=1)
+        aux_cols = list(cfg.get("auxiliary_responders") or [])
+        if not aux_cols:
+            if not ranked:
+                raise RuntimeError("blend mode requires responders in train frame")
+            aux_cols = [ranked[0][0]]
+        aux_col = aux_cols[0]
+        y_tr_aux = pd.to_numeric(inner_train[aux_col], errors="coerce").fillna(0.0).to_numpy(np.float64)
+        y_va_aux = pd.to_numeric(inner_valid[aux_col], errors="coerce").fillna(0.0).to_numpy(np.float64)
+        aux_booster = train_lightgbm(
+            x_tr2,
+            y_tr_aux,
+            w_tr2,
+            x_va2,
+            y_va_aux,
+            w_va2,
+            cfg["params"],
+            num_threads=paths["num_threads"],
+            num_boost_round=max(int(booster.best_iteration or refit_rounds), 50),
+            early_stopping_rounds=int(cfg["early_stopping_rounds"]),
+        )
+        pred_main = booster.predict(x_hold)
+        pred_aux = aux_booster.predict(x_hold)
+        blend_a, blend_score = choose_blend_weight(y_hold, pred_main, pred_aux, w_hold)
+        blend_info = {
+            "aux_responder": aux_col,
+            "blend_weight_main": blend_a,
+            "holdout_wzm_r2_blend": blend_score,
+            "holdout_wzm_r2_main_only": float(holdout_score),
+        }
+        holdout_score = blend_score
+        aux_booster.save_model(str(out_dir / "aux_model.txt"))
+        (out_dir / "blend_weight.json").write_text(json.dumps(blend_info, indent=2), encoding="utf-8")
+
     booster.save_model(str(out_dir / "model.txt"))
     (out_dir / "feature_state.json").write_text(
         json.dumps(state_to_jsonable(state), indent=2), encoding="utf-8"
@@ -124,6 +163,7 @@ def main() -> None:
         "cv": cv,
         "best_iteration": int(booster.best_iteration or 0),
         "holdout_wzm_r2": float(holdout_score),
+        "blend": blend_info,
     }
     (out_dir / "metrics.json").write_text(json.dumps(metrics, indent=2), encoding="utf-8")
     (out_dir / "cv_report.json").write_text(json.dumps(cv, indent=2), encoding="utf-8")
