@@ -9,7 +9,7 @@ Branch: `p1-modeling`
 - [x] V1 offline/online parity test green (`tests/test_features_v1.py`)
 - [x] `strategy_v1` smoke runner gate OK (`experiments/runner_gate_v1_smoke.json`)
 - [ ] Full official runner gate on this host (still RAM-limited; use `--mode full` on capable host)
-- [ ] Public CSV row count == 3217458 (generate via `python scripts/predict_public_csv.py`; may need online Jupyter if local OOM / long runtime)
+- [x] Public CSV row count == 3217458 (`workspace/submission/public/lgb_v1_submission.csv` generated locally; finite targets)
 
 ## Recorded numbers (2 train partitions, feature_version=v1)
 
