@@ -1,7 +1,7 @@
 # 2026 量化交易研究大赛 — GBDT 主线冲奖设计
 
 **日期**: 2026-07-13  
-**状态**: 已定稿；P0 实现计划见 `docs/superpowers/plans/2026-07-13-quant-contest-p0-foundation.md`  
+**状态**: 已定稿；P0 已合入 `main`；P1 计划见 `docs/superpowers/plans/2026-07-13-quant-contest-p1-modeling.md`  
 **策略**: 方案一 — LightGBM/XGBoost/CatBoost 为主，不做深度学习主线
 
 ## 1. 背景与目标
