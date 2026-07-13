@@ -11,12 +11,28 @@ import yaml
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
-from contest.features_v0 import fit_feature_v0, state_to_jsonable, transform_feature_v0
+from contest.features_v0 import fit_feature_v0, state_to_jsonable as state_to_jsonable_v0, transform_feature_v0
+from contest.features_v1 import fit_feature_v1, state_to_jsonable as state_to_jsonable_v1, transform_feature_v1_frame
 from contest.io import list_partition_files, load_partitions
 from contest.paths import load_paths
 from contest.train_lgb import evaluate_booster, train_lightgbm
 from contest.train_matrix import build_xyw, run_expanding_cv
 from contest.validation import holdout_time_split
+
+
+def _feature_fns(cfg: dict):
+    version = cfg.get("feature_version", "v0")
+    if version == "v0":
+        return fit_feature_v0, transform_feature_v0, state_to_jsonable_v0
+    if version == "v1":
+        window = int(cfg.get("window", 5))
+        max_roll = int(cfg.get("max_roll_cols", 32))
+
+        def fit_fn(df):
+            return fit_feature_v1(df, window=window, max_roll_cols=max_roll)
+
+        return fit_fn, transform_feature_v1_frame, state_to_jsonable_v1
+    raise NotImplementedError(f"feature_version={version}")
 
 
 def _schema_columns(path: Path) -> list[str]:
@@ -42,9 +58,8 @@ def _load_train(cfg: dict, data_root: Path) -> tuple[pd.DataFrame, list[str]]:
 def main() -> None:
     paths = load_paths()
     cfg = yaml.safe_load((ROOT / "configs" / "train_lgb_v1.yaml").read_text(encoding="utf-8"))
+    fit_feature_fn, transform_feature_fn, state_to_jsonable = _feature_fns(cfg)
     feature_version = cfg.get("feature_version", "v0")
-    if feature_version != "v0":
-        raise NotImplementedError(f"feature_version={feature_version} not wired yet; use Task 5")
 
     df, part_names = _load_train(cfg, paths["data_root"])
     train_times, holdout_times = holdout_time_split(
@@ -55,8 +70,8 @@ def main() -> None:
 
     cv = run_expanding_cv(
         pre,
-        fit_feature_fn=fit_feature_v0,
-        transform_feature_fn=transform_feature_v0,
+        fit_feature_fn=fit_feature_fn,
+        transform_feature_fn=transform_feature_fn,
         params=cfg["params"],
         n_folds=int(cfg["n_folds"]),
         embargo=int(cfg["embargo"]),
@@ -73,29 +88,9 @@ def main() -> None:
     inner_train = pre[pre["time_id"].isin(set(inner_train_times.tolist()))]
     inner_valid = pre[pre["time_id"].isin(set(inner_valid_times.tolist()))]
 
-    state = fit_feature_v0(inner_train)
-    x_tr, y_tr, w_tr = build_xyw(inner_train, state, transform_feature_v0)
-    x_va, y_va, w_va = build_xyw(inner_valid, state, transform_feature_v0)
-    booster = train_lightgbm(
-        x_tr,
-        y_tr,
-        w_tr,
-        x_va,
-        y_va,
-        w_va,
-        cfg["params"],
-        num_threads=paths["num_threads"],
-        num_boost_round=max(refit_rounds, 50),
-        early_stopping_rounds=int(cfg["early_stopping_rounds"]),
-    )
-
-    # Refit fill state on all pre-holdout for export consistency
-    state = fit_feature_v0(pre)
-    x_hold, y_hold, w_hold = build_xyw(holdout, state, transform_feature_v0)
-    # Note: booster was fit with inner_train fill; re-transform holdout with pre-fit state
-    # For V0 medians, refitting state on `pre` then predicting is standard; retrain quickly:
-    x_tr2, y_tr2, w_tr2 = build_xyw(inner_train, state, transform_feature_v0)
-    x_va2, y_va2, w_va2 = build_xyw(inner_valid, state, transform_feature_v0)
+    state = fit_feature_fn(pre)
+    x_tr2, y_tr2, w_tr2 = build_xyw(inner_train, state, transform_feature_fn)
+    x_va2, y_va2, w_va2 = build_xyw(inner_valid, state, transform_feature_fn)
     booster = train_lightgbm(
         x_tr2,
         y_tr2,
@@ -105,9 +100,10 @@ def main() -> None:
         w_va2,
         cfg["params"],
         num_threads=paths["num_threads"],
-        num_boost_round=max(int(booster.best_iteration or refit_rounds), 50),
+        num_boost_round=max(refit_rounds, 50),
         early_stopping_rounds=int(cfg["early_stopping_rounds"]),
     )
+    x_hold, y_hold, w_hold = build_xyw(holdout, state, transform_feature_fn)
     holdout_score = evaluate_booster(booster, x_hold, y_hold, w_hold)
 
     out_dir = paths["artifacts_dir"] / "lgb_v1"

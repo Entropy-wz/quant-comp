@@ -1,4 +1,6 @@
-feature_version: v0
+feature_version: v1
+window: 5
+max_roll_cols: 32
 max_train_partitions: 2
 n_folds: 3
 embargo: 5
