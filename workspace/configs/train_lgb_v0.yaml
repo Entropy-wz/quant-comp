@@ -6,7 +6,7 @@ num_boost_round: 300
 early_stopping_rounds: 40
 params:
   objective: regression
-  metric: l2
+  metric: "None"
   learning_rate: 0.05
   num_leaves: 64
   min_data_in_leaf: 100

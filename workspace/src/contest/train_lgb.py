@@ -15,6 +15,19 @@ def _early_stopping_callback(early_stopping_rounds: int) -> Any:
         return lgb.early_stopping(early_stopping_rounds)
 
 
+def _weighted_zero_mean_r2_feval(
+    y_pred: np.ndarray,
+    dataset: lgb.Dataset,
+) -> tuple[str, float, bool]:
+    y_true = dataset.get_label()
+    if y_true is None:
+        raise ValueError("LightGBM evaluation dataset must include labels")
+    weight = dataset.get_weight()
+    if weight is None:
+        weight = np.ones_like(y_true, dtype=np.float64)
+    return ("wzm_r2", weighted_zero_mean_r2(y_true, y_pred, weight), True)
+
+
 def train_lightgbm(
     X_train: np.ndarray,
     y_train: np.ndarray,
@@ -30,13 +43,15 @@ def train_lightgbm(
     train_set = lgb.Dataset(X_train, label=y_train, weight=w_train)
     valid_set = lgb.Dataset(X_valid, label=y_valid, weight=w_valid, reference=train_set)
     model_params = dict(params)
-    model_params["num_threads"] = int(num_threads)
+    model_params["metric"] = "None"
+    model_params["num_threads"] = max(1, min(int(num_threads), 4))
     booster = lgb.train(
         model_params,
         train_set,
         num_boost_round=num_boost_round,
         valid_sets=[valid_set],
         valid_names=["valid"],
+        feval=_weighted_zero_mean_r2_feval,
         callbacks=[
             _early_stopping_callback(early_stopping_rounds),
             lgb.log_evaluation(period=0),
