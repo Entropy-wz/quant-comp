@@ -15,6 +15,9 @@ workspace/artifacts/
 workspace/submission/public/*.csv
 workspace/submission/strategy_v0/model/*.txt
 workspace/submission/strategy_v0/model/*.json
+workspace/submission/strategy_v1/model/*.txt
+workspace/submission/strategy_v1/model/*.json
+workspace/experiments/*.log
 
 # Tooling scratch (keep progress ledger locally)
 .superpowers/
