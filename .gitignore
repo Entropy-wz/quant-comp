@@ -1,0 +1,21 @@
+# Large / generated
+public_release_20260630/
+public_release_20260630.tar.gz
+*.pdf
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
+
+# Workspace outputs
+workspace/artifacts/
+workspace/submission/public/*.csv
+workspace/submission/strategy_v0/model/*.txt
+workspace/submission/strategy_v0/model/*.json
+
+# Tooling scratch (keep progress ledger locally)
+.superpowers/
+.claude/
