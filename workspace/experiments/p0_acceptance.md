@@ -1,6 +1,6 @@
 # P0 Acceptance
 
-Evidence collected on branch `p0-foundation` (HEAD `2fc67c3`). Unit suite re-run for this checklist.
+Evidence collected on branch `p0-foundation`. Unit suite re-run for this checklist.
 
 - [x] `pytest` all green under `workspace/tests` — **12/12 passed** (`2026-07-13`, `pytest tests -v`, `PYTHONPATH=src`)
 - [x] `eda_summary.py` runs on one train partition — `workspace/experiments/eda_summary_partition0.json` (partition `train_partition_000.parquet`, 1,499,352 rows)
