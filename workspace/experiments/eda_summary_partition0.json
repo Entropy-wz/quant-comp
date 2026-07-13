@@ -1,0 +1,12 @@
+{
+  "partition": "train_partition_000.parquet",
+  "rows": 1499352,
+  "n_assets": 15,
+  "n_time_ids": 100000,
+  "n_features": 323,
+  "n_responders": 47,
+  "target_mean": 0.007730619516223669,
+  "target_std": 1.1008092164993286,
+  "weight_mean": 2.2917959690093994,
+  "feature_nan_frac_mean": 0.0
+}

@@ -1,0 +1,18 @@
+{
+  "status": "ok",
+  "rows": 4500,
+  "output_path": "D:\\exp_all\\assign\\quant\\workspace\\submission\\public\\lgb_v0_submission_smoke.csv",
+  "messages": [],
+  "timing": {
+    "model_init_seconds": 0.8573409000000538,
+    "predict_total_seconds": 12.408615700000041,
+    "predict_calls": 300,
+    "predict_timeout_count": 0,
+    "max_predict_seconds": 0.06970209999997223,
+    "mean_predict_seconds": 0.04136205233333347,
+    "total_seconds": 13.393616099999917,
+    "aborted_after_timeout": false
+  },
+  "mode": "smoke",
+  "data_root": "D:\\exp_all\\assign\\quant\\workspace\\artifacts\\smoke_data_root"
+}
