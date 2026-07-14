@@ -5,7 +5,7 @@ from contest.features_v0 import FeatureV0State, transform_feature_v0
 from contest.features_v1 import RollingState, fit_feature_v1, transform_feature_v1_frame
 
 
-def _panel(n_times=8, n_assets=3):
+def _panel(n_times=20, n_assets=3):
     rows = []
     rid = 0
     rng = np.random.default_rng(1)
@@ -25,7 +25,7 @@ def _panel(n_times=8, n_assets=3):
     return pd.DataFrame(rows)
 
 
-def test_offline_matches_online_rolling():
+def test_offline_matches_online_rolling_single_window():
     df = _panel()
     state = fit_feature_v1(df, window=3, roll_cols=["feature_000", "feature_001"])
     offline = transform_feature_v1_frame(df, state)
@@ -38,13 +38,31 @@ def test_offline_matches_online_rolling():
             FeatureV0State(state.feature_cols, state.fill_values, state.asset_levels),
         )
         online_rows.append(
-            roller.update_and_featurize(
-                int(time_id),
-                chunk["asset_id"].to_numpy(),
-                base,
-            )
+            roller.update_and_featurize(int(time_id), chunk["asset_id"].to_numpy(), base)
         )
     online = np.vstack(online_rows)
-    # offline is in original df order; online concatenated in time order which matches df order here
     assert offline.shape == online.shape
+    assert np.allclose(offline, online, atol=1e-5, rtol=1e-5)
+
+
+def test_offline_matches_online_multi_window():
+    df = _panel()
+    state = fit_feature_v1(
+        df, windows=[3, 7], roll_cols=["feature_000", "feature_001"], max_roll_cols=2
+    )
+    # base(3+1) + 2windows*(mean,std,delta)*2cols + diff*2 = 4 + 12 + 2 = 18
+    offline = transform_feature_v1_frame(df, state)
+    assert offline.shape[1] == 4 + 2 * 3 * 2 + 2
+
+    online_rows = []
+    roller = RollingState(state)
+    for time_id, chunk in df.groupby("time_id", sort=True):
+        base = transform_feature_v0(
+            chunk,
+            FeatureV0State(state.feature_cols, state.fill_values, state.asset_levels),
+        )
+        online_rows.append(
+            roller.update_and_featurize(int(time_id), chunk["asset_id"].to_numpy(), base)
+        )
+    online = np.vstack(online_rows)
     assert np.allclose(offline, online, atol=1e-5, rtol=1e-5)

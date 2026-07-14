@@ -14,18 +14,24 @@ class FeatureV1State:
     feature_cols: list[str]
     fill_values: dict[str, float]
     asset_levels: list[int]
-    window: int
+    window: int  # max window (history length); kept for backward compat
+    windows: list[int]
     roll_feature_cols: list[str]
 
 
 def fit_feature_v1(
     train_df: pd.DataFrame,
     window: int = 5,
+    windows: list[int] | None = None,
     roll_cols: list[str] | None = None,
     max_roll_cols: int = 32,
 ) -> FeatureV1State:
-    if window <= 0:
-        raise ValueError("window must be positive")
+    if windows is None:
+        windows = [int(window)]
+    windows = sorted({int(w) for w in windows if int(w) > 0})
+    if not windows:
+        raise ValueError("windows must contain at least one positive int")
+    max_w = max(windows)
     base = fit_feature_v0(train_df)
     if roll_cols is None:
         roll_cols = base.feature_cols[:max_roll_cols]
@@ -35,63 +41,100 @@ def fit_feature_v1(
         feature_cols=base.feature_cols,
         fill_values=base.fill_values,
         asset_levels=base.asset_levels,
-        window=int(window),
+        window=max_w,
+        windows=windows,
         roll_feature_cols=list(roll_cols),
     )
 
 
-def _filled_matrix(df: pd.DataFrame, cols: list[str], fill_values: dict[str, float]) -> np.ndarray:
-    feats = []
-    for col in cols:
-        s = pd.to_numeric(df[col], errors="coerce").astype(np.float32)
-        fill = np.float32(fill_values.get(col, 0.0))
-        s = s.fillna(fill).replace([np.inf, -np.inf], fill)
-        feats.append(s.to_numpy(dtype=np.float32))
-    return np.column_stack(feats) if feats else np.zeros((len(df), 0), dtype=np.float32)
+def _causal_roll_mean_std(block: np.ndarray, window: int) -> tuple[np.ndarray, np.ndarray]:
+    n, k = block.shape
+    if n == 0:
+        z = np.zeros((0, k), dtype=np.float32)
+        return z, z
+    c1 = np.cumsum(block, axis=0, dtype=np.float64)
+    c2 = np.cumsum(np.square(block, dtype=np.float64), axis=0)
+    c1_pad = np.vstack([np.zeros((1, k), dtype=np.float64), c1])
+    c2_pad = np.vstack([np.zeros((1, k), dtype=np.float64), c2])
+    idx = np.arange(n)
+    start = np.maximum(0, idx + 1 - window)
+    sum1 = c1_pad[idx + 1] - c1_pad[start]
+    sum2 = c2_pad[idx + 1] - c2_pad[start]
+    count = (idx - start + 1).astype(np.float64)[:, None]
+    mean64 = sum1 / count
+    var = np.maximum(sum2 / count - mean64 ** 2, 0.0)
+    mean = mean64.astype(np.float32)
+    std = np.sqrt(var).astype(np.float32)
+    std[count[:, 0] <= 1] = 0.0
+    return mean, std
+
+
+def _causal_diff1(block: np.ndarray) -> np.ndarray:
+    n, k = block.shape
+    diff = np.zeros((n, k), dtype=np.float32)
+    if n > 1:
+        diff[1:] = (block[1:] - block[:-1]).astype(np.float32)
+    return diff
 
 
 def transform_feature_v1_frame(df: pd.DataFrame, state: FeatureV1State) -> np.ndarray:
-    """Offline causal rolling: sort by asset,time; rolling uses current+past only."""
+    """Offline causal multi-window rolling + (x-mean) + diff1."""
     base = transform_feature_v0(df, FeatureV0State(state.feature_cols, state.fill_values, state.asset_levels))
     if not state.roll_feature_cols:
         return base
 
-    work = df.copy()
-    work["_row"] = np.arange(len(work))
-    work = work.sort_values(["asset_id", "time_id"], kind="mergesort").reset_index(drop=True)
-    roll_mat = _filled_matrix(work, state.roll_feature_cols, state.fill_values)
-    for j, col in enumerate(state.roll_feature_cols):
-        work[f"__roll_{j}"] = roll_mat[:, j]
+    n = len(df)
+    asset_ids = df["asset_id"].to_numpy()
+    time_ids = df["time_id"].to_numpy()
+    order = np.lexsort((time_ids, asset_ids))
 
-    g = work.groupby("asset_id", sort=False)
-    mean_parts = []
-    std_parts = []
-    diff_parts = []
-    for j, _col in enumerate(state.roll_feature_cols):
-        s = work[f"__roll_{j}"]
-        mean_parts.append(g[f"__roll_{j}"].transform(lambda x: x.rolling(state.window, min_periods=1).mean()).to_numpy(np.float32))
-        std_parts.append(g[f"__roll_{j}"].transform(lambda x: x.rolling(state.window, min_periods=1).std(ddof=0)).fillna(0.0).to_numpy(np.float32))
-        diff_parts.append(g[f"__roll_{j}"].transform(lambda x: x.diff().fillna(0.0)).to_numpy(np.float32))
-        del s
+    roll_cols = []
+    for col in state.roll_feature_cols:
+        s = pd.to_numeric(df[col], errors="coerce").to_numpy(dtype=np.float32, copy=True)
+        bad = ~np.isfinite(s)
+        if bad.any():
+            s[bad] = np.float32(state.fill_values.get(col, 0.0))
+        roll_cols.append(s[order])
+    roll_mat = np.column_stack(roll_cols)
+    del roll_cols
 
-    roll_mean = np.column_stack(mean_parts)
-    roll_std = np.column_stack(std_parts)
-    diff1 = np.column_stack(diff_parts)
+    ordered_assets = asset_ids[order]
+    k = roll_mat.shape[1]
+    windows = list(state.windows) if getattr(state, "windows", None) else [int(state.window)]
+    parts: list[np.ndarray] = []
 
-    order = work["_row"].to_numpy()
-    inv = np.empty(len(work), dtype=np.int64)
-    inv[order] = np.arange(len(work))
-    rolled = np.concatenate([roll_mean[inv], roll_std[inv], diff1[inv]], axis=1)
-    return np.concatenate([base, rolled], axis=1).astype(np.float32, copy=False)
+    boundaries = np.flatnonzero(np.r_[True, ordered_assets[1:] != ordered_assets[:-1], True])
+    for w in windows:
+        mean_all = np.empty((n, k), dtype=np.float32)
+        std_all = np.empty((n, k), dtype=np.float32)
+        for start, end in zip(boundaries[:-1], boundaries[1:]):
+            m, s = _causal_roll_mean_std(roll_mat[start:end], w)
+            mean_all[start:end] = m
+            std_all[start:end] = s
+        delta = (roll_mat - mean_all).astype(np.float32, copy=False)
+        parts.extend([mean_all, std_all, delta])
+
+    diff1 = np.empty((n, k), dtype=np.float32)
+    for start, end in zip(boundaries[:-1], boundaries[1:]):
+        diff1[start:end] = _causal_diff1(roll_mat[start:end])
+    parts.append(diff1)
+    del roll_mat
+
+    inv = np.empty(n, dtype=np.int64)
+    inv[order] = np.arange(n)
+    rolled = np.concatenate([p[inv] for p in parts], axis=1)
+    del parts, inv, order
+    return np.concatenate([base, rolled], axis=1)
 
 
 class RollingState:
-    """Online per-asset deques matching transform_feature_v1_frame causality."""
+    """Online per-asset history matching transform_feature_v1_frame."""
 
     def __init__(self, state: FeatureV1State):
         self.state = state
+        self.windows = list(state.windows) if getattr(state, "windows", None) else [int(state.window)]
         self.history: dict[int, deque[np.ndarray]] = defaultdict(
-            lambda: deque(maxlen=state.window)
+            lambda: deque(maxlen=max(self.windows))
         )
         self.last_time_id: int | None = None
         self._roll_index = [state.feature_cols.index(c) for c in state.roll_feature_cols]
@@ -114,10 +157,20 @@ class RollingState:
             prev = hist[-1] if hist else None
             hist.append(roll_vals.astype(np.float32, copy=True))
             stack = np.vstack(list(hist))
-            r_mean = stack.mean(axis=0).astype(np.float32)
-            r_std = stack.std(axis=0).astype(np.float32) if len(stack) > 1 else np.zeros_like(r_mean)
+            feats = [current]
+            for w in self.windows:
+                window_stack = stack[-w:]
+                r_mean = window_stack.mean(axis=0).astype(np.float32)
+                r_std = (
+                    window_stack.std(axis=0).astype(np.float32)
+                    if len(window_stack) > 1
+                    else np.zeros_like(r_mean)
+                )
+                delta = (roll_vals - r_mean).astype(np.float32)
+                feats.extend([r_mean, r_std, delta])
             d1 = (roll_vals - prev).astype(np.float32) if prev is not None else np.zeros_like(roll_vals)
-            rows.append(np.concatenate([current, r_mean, r_std, d1]))
+            feats.append(d1)
+            rows.append(np.concatenate(feats))
         return np.vstack(rows).astype(np.float32, copy=False)
 
 
@@ -126,10 +179,16 @@ def state_to_jsonable(state: FeatureV1State) -> dict:
 
 
 def state_from_jsonable(payload: dict) -> FeatureV1State:
+    windows = payload.get("windows")
+    window = int(payload.get("window", 5))
+    if not windows:
+        windows = [window]
+    windows = [int(w) for w in windows]
     return FeatureV1State(
         feature_cols=list(payload["feature_cols"]),
         fill_values={k: float(v) for k, v in payload["fill_values"].items()},
         asset_levels=[int(x) for x in payload["asset_levels"]],
-        window=int(payload["window"]),
+        window=max(windows),
+        windows=windows,
         roll_feature_cols=list(payload["roll_feature_cols"]),
     )

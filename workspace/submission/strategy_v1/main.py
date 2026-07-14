@@ -17,10 +17,13 @@ class Model:
         state = json.loads((model_dir / "feature_state.json").read_text(encoding="utf-8"))
         self.feature_cols = list(state["feature_cols"])
         self.fill_values = {k: float(v) for k, v in state["fill_values"].items()}
-        self.window = int(state.get("window", 1))
+        self.windows = [int(w) for w in state.get("windows") or [int(state.get("window", 5))]]
+        self.window = max(self.windows)
         self.roll_feature_cols = list(state.get("roll_feature_cols", []))
         self._roll_index = [self.feature_cols.index(c) for c in self.roll_feature_cols]
-        self.history: dict[int, deque] = defaultdict(lambda: deque(maxlen=max(self.window, 1)))
+        raw_sel = state.get("selected_indices")
+        self.selected_indices = np.asarray(raw_sel, dtype=np.int64) if raw_sel is not None else None
+        self.history: dict[int, deque] = defaultdict(lambda: deque(maxlen=self.window))
         self.last_time_id: int | None = None
         self.num_threads = 4
 
@@ -66,14 +69,26 @@ class Model:
             prev = hist[-1] if hist else None
             hist.append(roll_vals.astype(np.float32, copy=True))
             stack = np.vstack(list(hist))
-            r_mean = stack.mean(axis=0).astype(np.float32)
-            r_std = stack.std(axis=0).astype(np.float32) if len(stack) > 1 else np.zeros_like(r_mean)
+            feats = [current]
+            for w in self.windows:
+                window_stack = stack[-w:]
+                r_mean = window_stack.mean(axis=0).astype(np.float32)
+                r_std = (
+                    window_stack.std(axis=0).astype(np.float32)
+                    if len(window_stack) > 1
+                    else np.zeros_like(r_mean)
+                )
+                delta = (roll_vals - r_mean).astype(np.float32)
+                feats.extend([r_mean, r_std, delta])
             d1 = (roll_vals - prev).astype(np.float32) if prev is not None else np.zeros_like(roll_vals)
-            rows.append(np.concatenate([current, r_mean, r_std, d1]))
+            feats.append(d1)
+            rows.append(np.concatenate(feats))
         return np.vstack(rows).astype(np.float32, copy=False)
 
     def predict(self, test):
         x = self._transform(test)
+        if self.selected_indices is not None:
+            x = x[:, self.selected_indices]
         pred = self.booster.predict(x, num_threads=self.num_threads)
         if self.aux_booster is not None and self.blend_a < 1.0:
             aux = self.aux_booster.predict(x, num_threads=self.num_threads)

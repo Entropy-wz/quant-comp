@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import gc
 from typing import Any, Callable
 
 import numpy as np
@@ -41,6 +42,7 @@ def run_expanding_cv(
     fold_reports: list[dict[str, Any]] = []
 
     for fold_idx, (train_times, valid_times) in enumerate(folds_spec):
+        print(f"  CV fold {fold_idx + 1}/{len(folds_spec)} starting...", flush=True)
         train_mask = df["time_id"].isin(set(train_times.tolist()))
         valid_mask = df["time_id"].isin(set(valid_times.tolist()))
         train_df = df.loc[train_mask]
@@ -64,6 +66,12 @@ def run_expanding_cv(
             early_stopping_rounds=early_stopping_rounds,
         )
         score = evaluate_booster(booster, x_valid, y_valid, w_valid)
+        print(
+            f"  CV fold {fold_idx + 1}/{len(folds_spec)} done "
+            f"train={len(train_df):,} valid={len(valid_df):,} "
+            f"best_iter={booster.best_iteration} wzm_r2={score:.6f}",
+            flush=True,
+        )
         fold_reports.append(
             {
                 "fold": fold_idx,
@@ -73,6 +81,8 @@ def run_expanding_cv(
                 "valid_wzm_r2": float(score),
             }
         )
+        del x_train, y_train, w_train, x_valid, y_valid, w_valid, booster, state
+        gc.collect()
 
     if not fold_reports:
         raise RuntimeError("no folds produced scores")

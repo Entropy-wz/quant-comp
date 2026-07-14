@@ -4,13 +4,13 @@
   "output_path": "D:\\exp_all\\assign\\quant\\workspace\\submission\\public\\lgb_v1_submission_smoke.csv",
   "messages": [],
   "timing": {
-    "model_init_seconds": 1.4221118999998907,
-    "predict_total_seconds": 12.968917299997429,
+    "model_init_seconds": 1.5090896999972756,
+    "predict_total_seconds": 14.256721000045218,
     "predict_calls": 300,
     "predict_timeout_count": 0,
-    "max_predict_seconds": 0.07314290000022083,
-    "mean_predict_seconds": 0.04322972433332476,
-    "total_seconds": 14.557608299999629,
+    "max_predict_seconds": 0.08637639999869862,
+    "mean_predict_seconds": 0.04752240333348406,
+    "total_seconds": 15.988620100000844,
     "aborted_after_timeout": false
   }
 }

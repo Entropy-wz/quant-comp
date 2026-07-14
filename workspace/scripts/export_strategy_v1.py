@@ -16,14 +16,17 @@ def main() -> None:
     dst = paths["workspace_root"] / "submission" / "strategy_v1"
     model_dir = dst / "model"
     model_dir.mkdir(parents=True, exist_ok=True)
-    for name in ("model.txt", "feature_state.json", "aux_model.txt", "blend_weight.json"):
+    for name in ("model.txt", "feature_state.json"):
         p = src / name
-        if p.exists():
-            shutil.copy2(p, model_dir / name)
+        if not p.exists():
+            raise FileNotFoundError(p)
+        shutil.copy2(p, model_dir / name)
+    for name in ("aux_model.txt", "blend_weight.json"):
+        stale = model_dir / name
+        if stale.exists():
+            stale.unlink()
     if not (dst / "main.py").exists():
         raise FileNotFoundError("main.py missing in strategy_v1")
-    if not (model_dir / "model.txt").exists():
-        raise FileNotFoundError("model.txt missing — train lgb_v1 first")
     print(f"exported artifacts to {model_dir}")
 
 

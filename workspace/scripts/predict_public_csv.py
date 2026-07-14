@@ -50,15 +50,23 @@ def main() -> None:
     if is_v1:
         state = state_from_jsonable_v1(raw)
 
-        def transform(df):
-            # For batch public CSV we can use offline frame transform (same causality).
+        def _transform_full(df):
             return transform_feature_v1_frame(df, state)
 
     else:
         state = state_from_jsonable_v0(raw)
 
-        def transform(df):
+        def _transform_full(df):
             return transform_feature_v0(df, state)
+
+    selected = raw.get("selected_indices")
+    if selected is not None:
+        idx = np.asarray(selected, dtype=np.int64)
+
+        def transform(df):
+            return _transform_full(df)[:, idx]
+    else:
+        transform = _transform_full
 
     columns = ["row_id", "time_id", "asset_id", *state.feature_cols]
     blend_a = 1.0

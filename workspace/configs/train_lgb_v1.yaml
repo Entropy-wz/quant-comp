@@ -1,21 +1,22 @@
 feature_version: v1
-window: 5
+window: 15
+windows: [5, 15]
 max_roll_cols: 32
-max_train_partitions: 2
+max_train_partitions: 4
 n_folds: 3
 embargo: 5
 holdout_fraction: 0.2
-num_boost_round: 400
-early_stopping_rounds: 40
+num_boost_round: 600
+early_stopping_rounds: 50
 auxiliary_responders: []
-auxiliary_mode: none  # none | blend (train aux booster on top responder, blend on holdout)
+auxiliary_mode: none
 params:
   objective: regression
   metric: None
   learning_rate: 0.03
-  num_leaves: 64
-  min_data_in_leaf: 200
-  feature_fraction: 0.8
+  num_leaves: 96
+  min_data_in_leaf: 150
+  feature_fraction: 0.75
   bagging_fraction: 0.8
   bagging_freq: 1
   verbosity: -1
